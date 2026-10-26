@@ -1,0 +1,538 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Connect 4</title>
+    <style>
+      :root {
+        --bg: #07141d;
+        --panel: rgba(19, 31, 42, 0.8);
+        --panel-border: rgba(255, 255, 255, 0.12);
+        --text: #eff7ff;
+        --muted: #9bb2c8;
+        --green: #3ee08f;
+        --pink: #ff6bb6;
+        --board: #1f6feb;
+        --board-dark: #153d8a;
+        --cell: #2b7cff;
+      }
+
+      * { box-sizing: border-box; }
+
+      html, body {
+        margin: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background: radial-gradient(circle at top, #12314a 0%, var(--bg) 55%);
+        font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        color: var(--text);
+      }
+
+      body {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      #app {
+        position: relative;
+        width: 100%;
+        height: 100%;
+      }
+
+      #ui {
+        position: absolute;
+        top: 18px;
+        left: 18px;
+        z-index: 10;
+        background: var(--panel);
+        border: 1px solid var(--panel-border);
+        border-radius: 14px;
+        padding: 14px 18px;
+        backdrop-filter: blur(10px);
+        box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
+      }
+
+      h1 {
+        margin: 0 0 8px;
+        font-size: clamp(1.25rem, 2vw, 2rem);
+        letter-spacing: 0.04em;
+      }
+
+      #status {
+        margin-top: 8px;
+        font-size: 0.95rem;
+        color: var(--muted);
+        min-height: 1.2em;
+      }
+
+      .badge-row {
+        display: flex;
+        gap: 10px;
+        margin-top: 10px;
+        align-items: center;
+        flex-wrap: wrap;
+      }
+
+      .badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        padding: 5px 10px;
+        border-radius: 999px;
+        background: rgba(255,255,255,0.06);
+        border: 1px solid rgba(255,255,255,0.08);
+        font-size: 0.8rem;
+      }
+
+      .dot {
+        width: 12px;
+        height: 12px;
+        border-radius: 50%;
+        display: inline-block;
+      }
+
+      .dot.player { background: var(--green); }
+      .dot.ai { background: var(--pink); }
+
+      button {
+        border: 0;
+        border-radius: 10px;
+        cursor: pointer;
+        background: linear-gradient(135deg, #2d8cff, #2c5af5);
+        color: white;
+        padding: 10px 14px;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+        transition: transform 0.12s ease, filter 0.12s ease;
+        box-shadow: 0 8px 18px rgba(44, 90, 245, 0.35);
+      }
+
+      button:hover {
+        transform: translateY(-1px);
+        filter: brightness(1.05);
+      }
+
+      button:active {
+        transform: translateY(0);
+      }
+
+      canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <div id="ui">
+        <h1>Connect 4</h1>
+        <div id="status">Green to move — pick a column.</div>
+        <div class="badge-row">
+          <div class="badge"><span class="dot player"></span> Green</div>
+          <div class="badge"><span class="dot ai"></span> Pink</div>
+        </div>
+        <div class="badge-row">
+          <button id="reset-btn" type="button">New game</button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module">
+      import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+      import { OrbitControls } from 'https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/controls/OrbitControls.js';
+
+      const ROWS = 6;
+      const COLS = 7;
+      const HUMAN = 1;
+      const AI = 2;
+      const EMPTY = 0;
+      const EMPTY_WIN_SCORE = 0;
+      const CELL_SIZE = 1.18;
+      const BOARD_DEPTH = 6.2;
+
+      const statusEl = document.getElementById('status');
+      const resetBtn = document.getElementById('reset-btn');
+
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x07141d);
+      scene.fog = new THREE.Fog(0x07141d, 18, 38);
+
+      const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+      camera.position.set(0, 14, 21);
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      document.getElementById('app').appendChild(renderer.domElement);
+
+      const controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.enablePan = false;
+      controls.enableRotate = true;
+      controls.enableZoom = true;
+      controls.minDistance = 14;
+      controls.maxDistance = 32;
+      controls.minPolarAngle = 0.8;
+      controls.maxPolarAngle = 1.45;
+      controls.target.set(0, 2.8, 0);
+      controls.update();
+
+      const ambientLight = new THREE.AmbientLight(0xffffff, 1.4);
+      scene.add(ambientLight);
+
+      const sun = new THREE.DirectionalLight(0xffffff, 1.2);
+      sun.position.set(8, 16, 12);
+      sun.castShadow = true;
+      sun.shadow.mapSize.width = 2048;
+      sun.shadow.mapSize.height = 2048;
+      scene.add(sun);
+
+      const boardGroup = new THREE.Group();
+      scene.add(boardGroup);
+
+      const boardBase = new THREE.Mesh(
+        new THREE.BoxGeometry(9.4, 0.75, 7.8),
+        new THREE.MeshStandardMaterial({ color: 0x1f6feb, metalness: 0.05, roughness: 0.75 })
+      );
+      boardBase.position.y = -0.5;
+      boardBase.receiveShadow = true;
+      boardGroup.add(boardBase);
+
+      const boardInset = new THREE.Mesh(
+        new THREE.BoxGeometry(8.6, 0.2, 7.0),
+        new THREE.MeshStandardMaterial({ color: 0x2d7df6, roughness: 0.5, metalness: 0.2 })
+      );
+      boardInset.position.y = 0.1;
+      boardInset.receiveShadow = true;
+      boardGroup.add(boardInset);
+
+      const discGroup = new THREE.Group();
+      boardGroup.add(discGroup);
+
+      const columnHitboxes = [];
+      for (let col = 0; col < COLS; col++) {
+        const hitbox = new THREE.Mesh(
+          new THREE.BoxGeometry(1.08, 0.7, BOARD_DEPTH),
+          new THREE.MeshStandardMaterial({ color: 0xffffff, transparent: true, opacity: 0.0 })
+        );
+        hitbox.position.set((col - 3) * CELL_SIZE, 3.8, 0);
+        hitbox.userData.column = col;
+        columnHitboxes.push(hitbox);
+        boardGroup.add(hitbox);
+      }
+
+      const board = Array.from({ length: ROWS }, () => Array(COLS).fill(EMPTY));
+      const raycaster = new THREE.Raycaster();
+      const pointer = new THREE.Vector2();
+      let finished = false;
+      let aiThinking = false;
+
+      function setStatus(text) {
+        statusEl.textContent = text;
+      }
+
+      function getAvailableMoves(currentBoard) {
+        const available = [];
+        for (let col = 0; col < COLS; col++) {
+          if (currentBoard[ROWS - 1][col] === EMPTY) {
+            available.push(col);
+          }
+        }
+        return available;
+      }
+
+      function getDropRow(currentBoard, col) {
+        for (let row = ROWS - 1; row >= 0; row--) {
+          if (currentBoard[row][col] === EMPTY) return row;
+        }
+        return -1;
+      }
+
+      function createDisc(col, row, player) {
+        const color = player === HUMAN ? 0x3ee08f : 0xff6bb6;
+        const disc = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.42, 0.42, 0.22, 32),
+          new THREE.MeshStandardMaterial({ color, roughness: 0.52, metalness: 0.18 })
+        );
+        disc.position.set((col - 3) * CELL_SIZE, 0.55 + row * 0.56, (2.5 - row) * CELL_SIZE);
+        disc.castShadow = true;
+        disc.receiveShadow = true;
+        discGroup.add(disc);
+        return disc;
+      }
+
+      function renderBoard() {
+        while (discGroup.children.length > 0) {
+          const child = discGroup.children.pop();
+          if (child) {
+            child.geometry.dispose();
+            child.material.dispose();
+          }
+        }
+
+        for (let row = 0; row < ROWS; row++) {
+          for (let col = 0; col < COLS; col++) {
+            const value = board[row][col];
+            if (value !== EMPTY) {
+              createDisc(col, row, value);
+            }
+          }
+        }
+      }
+
+      function checkWinner(currentBoard, lastRow, lastCol, player) {
+        const directions = [
+          [0, 1],
+          [1, 0],
+          [1, 1],
+          [1, -1],
+        ];
+
+        for (const [dr, dc] of directions) {
+          let count = 1;
+          for (let step = 1; step < 4; step++) {
+            const r = lastRow + dr * step;
+            const c = lastCol + dc * step;
+            if (r < 0 || r >= ROWS || c < 0 || c >= COLS) break;
+            if (currentBoard[r][c] !== player) break;
+            count++;
+          }
+          for (let step = 1; step < 4; step++) {
+            const r = lastRow - dr * step;
+            const c = lastCol - dc * step;
+            if (r < 0 || r >= ROWS || c < 0 || c >= COLS) break;
+            if (currentBoard[r][c] !== player) break;
+            count++;
+          }
+          if (count >= 4) return true;
+        }
+
+        return false;
+      }
+
+      function findWinner(currentBoard) {
+        for (let row = 0; row < ROWS; row++) {
+          for (let col = 0; col < COLS; col++) {
+            const value = currentBoard[row][col];
+            if (value === EMPTY) continue;
+            if (checkWinner(currentBoard, row, col, value)) {
+              return value;
+            }
+          }
+        }
+        return EMPTY;
+      }
+
+      function boardIsFull(currentBoard) {
+        return currentBoard[0].every((cell) => cell !== EMPTY);
+      }
+
+      function evaluateWindow(windowCells) {
+        const aiCount = windowCells.filter((cell) => cell === AI).length;
+        const humanCount = windowCells.filter((cell) => cell === HUMAN).length;
+        const emptyCount = windowCells.filter((cell) => cell === EMPTY).length;
+
+        if (aiCount > 0 && humanCount > 0) return 0;
+        if (aiCount === 4) return 100000;
+        if (aiCount === 3 && emptyCount === 1) return 120;
+        if (aiCount === 2 && emptyCount === 2) return 14;
+        if (aiCount === 1 && emptyCount === 3) return 2;
+        if (humanCount === 4) return -100000;
+        if (humanCount === 3 && emptyCount === 1) return -140;
+        if (humanCount === 2 && emptyCount === 2) return -16;
+        if (humanCount === 1 && emptyCount === 3) return -2;
+        return 0;
+      }
+
+      function evaluateBoard(currentBoard) {
+        let score = 0;
+
+        for (let row = 0; row < ROWS; row++) {
+          score += (currentBoard[row][3] === AI ? 6 : 0) + (currentBoard[row][3] === HUMAN ? -6 : 0);
+        }
+
+        for (let row = 0; row < ROWS; row++) {
+          for (let col = 0; col <= COLS - 4; col++) {
+            const windowCells = [];
+            for (let k = 0; k < 4; k++) windowCells.push(currentBoard[row][col + k]);
+            score += evaluateWindow(windowCells);
+          }
+        }
+
+        for (let row = 0; row <= ROWS - 4; row++) {
+          for (let col = 0; col < COLS; col++) {
+            const windowCells = [];
+            for (let k = 0; k < 4; k++) windowCells.push(currentBoard[row + k][col]);
+            score += evaluateWindow(windowCells);
+          }
+        }
+
+        for (let row = 0; row <= ROWS - 4; row++) {
+          for (let col = 0; col <= COLS - 4; col++) {
+            const windowCells = [];
+            for (let k = 0; k < 4; k++) windowCells.push(currentBoard[row + k][col + k]);
+            score += evaluateWindow(windowCells);
+          }
+        }
+
+        for (let row = 0; row <= ROWS - 4; row++) {
+          for (let col = 3; col < COLS; col++) {
+            const windowCells = [];
+            for (let k = 0; k < 4; k++) windowCells.push(currentBoard[row + k][col - k]);
+            score += evaluateWindow(windowCells);
+          }
+        }
+
+        return score;
+      }
+
+      function minimax(currentBoard, depth, alpha, beta, maximizingPlayer) {
+        const winner = findWinner(currentBoard);
+        if (winner === AI) return 100000 + depth;
+        if (winner === HUMAN) return -100000 - depth;
+
+        const moves = getAvailableMoves(currentBoard);
+        if (moves.length === 0) return EMPTY_WIN_SCORE;
+        if (depth === 0) return evaluateBoard(currentBoard);
+
+        if (maximizingPlayer) {
+          let maxEval = -Infinity;
+          for (const col of moves) {
+            const row = getDropRow(currentBoard, col);
+            currentBoard[row][col] = AI;
+            const value = minimax(currentBoard, depth - 1, alpha, beta, false);
+            currentBoard[row][col] = EMPTY;
+            maxEval = Math.max(maxEval, value);
+            alpha = Math.max(alpha, value);
+            if (beta <= alpha) break;
+          }
+          return maxEval;
+        }
+
+        let minEval = Infinity;
+        for (const col of moves) {
+          const row = getDropRow(currentBoard, col);
+          currentBoard[row][col] = HUMAN;
+          const value = minimax(currentBoard, depth - 1, alpha, beta, true);
+          currentBoard[row][col] = EMPTY;
+          minEval = Math.min(minEval, value);
+          beta = Math.min(beta, value);
+          if (beta <= alpha) break;
+        }
+        return minEval;
+      }
+
+      function chooseAIMove() {
+        const moves = getAvailableMoves(board);
+        let bestScore = -Infinity;
+        let bestMove = moves[0];
+
+        for (const col of moves) {
+          const row = getDropRow(board, col);
+          board[row][col] = AI;
+          const score = minimax(board, 4, -Infinity, Infinity, false);
+          board[row][col] = EMPTY;
+
+          if (score > bestScore) {
+            bestScore = score;
+            bestMove = col;
+          }
+        }
+
+        return bestMove;
+      }
+
+      function finishGame(message) {
+        finished = true;
+        setStatus(message);
+      }
+
+      function makeMove(col, player) {
+        const row = getDropRow(board, col);
+        if (row === -1 || finished) return false;
+
+        board[row][col] = player;
+        renderBoard();
+
+        if (checkWinner(board, row, col, player)) {
+          finishGame(player === HUMAN ? 'Green wins! Nice play.' : 'Pink wins. Try again!');
+          return true;
+        }
+
+        if (boardIsFull(board)) {
+          finishGame('Draw game.');
+          return true;
+        }
+
+        return true;
+      }
+
+      function handleHumanMove(col) {
+        if (aiThinking || finished) return;
+        if (makeMove(col, HUMAN)) {
+          if (!finished) {
+            aiThinking = true;
+            setStatus('Pink is thinking...');
+            window.setTimeout(() => {
+              const aiMove = chooseAIMove();
+              aiThinking = false;
+              if (finished) return;
+              makeMove(aiMove, AI);
+              if (!finished) {
+                setStatus('Green to move — pick a column.');
+              }
+            }, 420);
+          }
+        }
+      }
+
+      function resetGame() {
+        for (let row = 0; row < ROWS; row++) {
+          for (let col = 0; col < COLS; col++) {
+            board[row][col] = EMPTY;
+          }
+        }
+        finished = false;
+        aiThinking = false;
+        renderBoard();
+        setStatus('Green to move — pick a column.');
+      }
+
+      resetBtn.addEventListener('click', resetGame);
+
+      renderer.domElement.addEventListener('pointerdown', (event) => {
+        const rect = renderer.domElement.getBoundingClientRect();
+        pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+        pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+        raycaster.setFromCamera(pointer, camera);
+        const hits = raycaster.intersectObjects(columnHitboxes);
+        if (hits.length > 0) {
+          const column = hits[0].object.userData.column;
+          handleHumanMove(column);
+        }
+      });
+
+      function animate() {
+        requestAnimationFrame(animate);
+        controls.update();
+        renderer.render(scene, camera);
+      }
+
+      resetGame();
+      animate();
+
+      window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+    </script>
+  </body>
+</html>
