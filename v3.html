@@ -1,0 +1,947 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>3D Connect 4 Experience</title>
+    <!-- Tailwind CSS for modern responsive UI styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;900&display=swap" rel="stylesheet">
+    <style>
+      :root {
+        font-family: 'Inter', sans-serif;
+      }
+      body {
+        margin: 0;
+        padding: 0;
+        overflow: hidden;
+        background: radial-gradient(circle at center, #0f172a 0%, #020617 100%);
+        user-select: none;
+        -webkit-user-select: none;
+      }
+      /* Glassmorphism panel styling */
+      .glass-panel {
+        background: rgba(15, 23, 42, 0.75);
+        backdrop-filter: blur(16px);
+        -webkit-backdrop-filter: blur(16px);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+      }
+      .badge-glow-p1 {
+        box-shadow: 0 0 18px rgba(121, 254, 12, 0.6);
+      }
+      .badge-glow-p2 {
+        box-shadow: 0 0 18px rgba(255, 0, 127, 0.6);
+      }
+      canvas {
+        outline: none;
+      }
+      /* Slide-out drawer animation */
+      .drawer-transition {
+        transition: transform 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      }
+    </style>
+  </head>
+  <body class="w-full h-screen text-slate-100 flex flex-col justify-between">
+    <!-- Main 3D Canvas Container -->
+    <div id="canvas-container" class="absolute inset-0 z-0"></div>
+
+    <!-- UI Overlay Header: Hamburger Menu Button & Minimal Turn Score Indicator -->
+    <header class="relative z-10 p-4 md:p-6 flex justify-between items-center pointer-events-none">
+      <!-- Top-Left Hamburger Menu Trigger -->
+      <button id="hamburger-btn" class="glass-panel p-3 rounded-2xl text-slate-200 hover:text-white hover:bg-slate-800/80 pointer-events-auto transition-all active:scale-95 shadow-xl flex items-center justify-center">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 6h16M4 12h16M4 18h16"></path>
+        </svg>
+      </button>
+
+      <!-- Center Minimalist Score/Turn Indicator -->
+      <div class="glass-panel px-5 py-2.5 rounded-2xl flex items-center gap-5 pointer-events-auto shadow-2xl">
+        <div id="p1-badge" class="flex items-center gap-2.5 transition-all duration-300 p-1 px-2.5 rounded-xl border border-transparent">
+          <div class="w-3.5 h-3.5 rounded-full bg-[#79FE0C] shadow-lg shadow-[#79FE0C]/50"></div>
+          <div class="text-left">
+            <div id="p1-label" class="text-[10px] font-bold tracking-wider text-slate-400 uppercase">P1</div>
+            <div id="p1-score" class="text-base font-black text-[#79FE0C]">0</div>
+          </div>
+        </div>
+
+        <div id="game-status-text" class="text-slate-500 font-extrabold text-xs uppercase tracking-widest px-1">VS</div>
+
+        <div id="p2-badge" class="flex items-center gap-2.5 transition-all duration-300 p-1 px-2.5 rounded-xl border border-transparent">
+          <div class="text-right">
+            <div id="p2-label" class="text-[10px] font-bold tracking-wider text-slate-400 uppercase">AI</div>
+            <div id="p2-score" class="text-base font-black text-[#FF007F]">0</div>
+          </div>
+          <div class="w-3.5 h-3.5 rounded-full bg-[#FF007F] shadow-lg shadow-[#FF007F]/50"></div>
+        </div>
+      </div>
+
+      <!-- Spacer for centering symmetry -->
+      <div class="w-12"></div>
+    </header>
+
+    <!-- Slide-out Hamburger Sidebar Modal Overlay -->
+    <div id="menu-backdrop" class="fixed inset-0 bg-black/60 backdrop-blur-sm z-40 opacity-0 pointer-events-none transition-opacity duration-300"></div>
+
+    <aside id="side-drawer" class="fixed top-0 left-0 bottom-0 w-80 max-w-[85vw] glass-panel z-50 p-6 flex flex-col justify-between transform -translate-x-full drawer-transition shadow-2xl border-r border-slate-700/50">
+      <div class="flex flex-col gap-6">
+        <!-- Sidebar Header -->
+        <div class="flex items-center justify-between border-b border-slate-800 pb-4">
+          <h2 class="text-lg font-black tracking-wider bg-clip-text text-transparent bg-gradient-to-r from-[#79FE0C] to-[#FF007F]">
+            MENU & SETTINGS
+          </h2>
+          <button id="close-drawer-btn" class="p-2 rounded-xl text-slate-400 hover:text-white hover:bg-slate-800 transition-colors">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+          </button>
+        </div>
+
+        <!-- Mode Select -->
+        <div class="flex flex-col gap-2">
+          <label class="text-xs font-bold text-slate-400 uppercase tracking-wider">Game Mode / Difficulty</label>
+          <select id="mode-select" class="bg-slate-900/90 text-sm font-semibold rounded-xl p-3 border border-slate-700/70 focus:outline-none focus:border-[#79FE0C] text-slate-200 cursor-pointer">
+            <option value="ai-medium">Vs AI (Medium)</option>
+            <option value="ai-hard">Vs AI (Hard)</option>
+            <option value="ai-easy">Vs AI (Easy)</option>
+            <option value="pvp">2 Players (Local)</option>
+          </select>
+        </div>
+
+        <!-- SFX Volume Control -->
+        <div class="flex flex-col gap-2">
+          <div class="flex justify-between items-center">
+            <label class="text-xs font-bold text-slate-400 uppercase tracking-wider">SFX Volume</label>
+            <span id="volume-value-text" class="text-xs font-mono text-[#79FE0C]">80%</span>
+          </div>
+          <div class="flex items-center gap-3 bg-slate-900/90 p-3 rounded-xl border border-slate-700/70">
+            <svg class="w-5 h-5 text-slate-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.536 8.464a5 5 0 010 7.072m2.828-9.9a9 9 0 010 12.728M5.586 15H4a1 1 0 01-1-1v-4a1 1 0 011-1h1.586l4.707-4.707C10.923 3.663 12 4.109 12 5v14c0 .891-1.077 1.337-1.707.707L5.586 15z"></path></svg>
+            <input id="volume-slider" type="range" min="0" max="1" step="0.05" value="0.8" class="w-full accent-[#79FE0C] cursor-pointer">
+          </div>
+        </div>
+      </div>
+
+      <!-- Action Buttons -->
+      <div class="flex flex-col gap-3 pt-6 border-t border-slate-800">
+        <button id="reset-btn" class="w-full py-3 rounded-xl bg-gradient-to-r from-[#79FE0C]/90 to-emerald-500 hover:from-[#79FE0C] hover:to-emerald-400 text-slate-950 font-black text-sm uppercase tracking-wider shadow-lg shadow-[#79FE0C]/20 transition-all active:scale-95 flex items-center justify-center gap-2">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+          New Game
+        </button>
+      </div>
+    </aside>
+
+    <!-- Three.js Module Importmap -->
+    <script type="importmap">
+      {
+        "imports": {
+          "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+          "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+      }
+    </script>
+
+    <script type="module">
+      import * as THREE from 'three';
+      import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+      // --- Sound Effects System (Web Audio API) ---
+      class SoundSystem {
+        constructor() {
+          this.ctx = null;
+          this.enabled = true;
+          this.volume = 0.8;
+        }
+
+        init() {
+          if (!this.ctx) {
+            this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+          }
+          if (this.ctx.state === 'suspended') {
+            this.ctx.resume();
+          }
+        }
+
+        playHover() {
+          if (!this.enabled || !this.ctx || this.volume <= 0) return;
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(520, this.ctx.currentTime);
+          osc.frequency.exponentialRampToValueAtTime(880, this.ctx.currentTime + 0.03);
+          gain.gain.setValueAtTime(0.015 * this.volume, this.ctx.currentTime);
+          gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.03);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start();
+          osc.stop(this.ctx.currentTime + 0.03);
+        }
+
+        // Distinct drop SFX per player turn
+        playDrop(player) {
+          if (!this.enabled || !this.ctx || this.volume <= 0) return;
+
+          if (player === 1) {
+            // Player 1 (Green): Crisp high-pitched metallic/glassy clink
+            const osc = this.ctx.createOscillator();
+            const osc2 = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            
+            osc.type = 'triangle';
+            osc2.type = 'sine';
+
+            osc.frequency.setValueAtTime(650, this.ctx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(180, this.ctx.currentTime + 0.09);
+
+            osc2.frequency.setValueAtTime(1200, this.ctx.currentTime);
+            osc2.frequency.exponentialRampToValueAtTime(400, this.ctx.currentTime + 0.06);
+
+            gain.gain.setValueAtTime(0.3 * this.volume, this.ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.1);
+
+            osc.connect(gain);
+            osc2.connect(gain);
+            gain.connect(this.ctx.destination);
+
+            osc.start();
+            osc2.start();
+            osc.stop(this.ctx.currentTime + 0.1);
+            osc2.stop(this.ctx.currentTime + 0.1);
+          } else {
+            // Player 2 (Magenta): Deeper resonant punchy synth clink
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+
+            osc.type = 'sawtooth';
+            osc.frequency.setValueAtTime(240, this.ctx.currentTime);
+            osc.frequency.exponentialRampToValueAtTime(60, this.ctx.currentTime + 0.14);
+
+            gain.gain.setValueAtTime(0.35 * this.volume, this.ctx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.14);
+
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+
+            osc.start();
+            osc.stop(this.ctx.currentTime + 0.14);
+          }
+        }
+
+        playWin() {
+          if (!this.enabled || !this.ctx || this.volume <= 0) return;
+          const notes = [293.66, 369.99, 440.00, 587.33, 739.99];
+          notes.forEach((freq, idx) => {
+            const osc = this.ctx.createOscillator();
+            const gain = this.ctx.createGain();
+            osc.type = 'triangle';
+            osc.frequency.setValueAtTime(freq, this.ctx.currentTime + idx * 0.07);
+            gain.gain.setValueAtTime(0.2 * this.volume, this.ctx.currentTime + idx * 0.07);
+            gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + idx * 0.07 + 0.35);
+            osc.connect(gain);
+            gain.connect(this.ctx.destination);
+            osc.start(this.ctx.currentTime + idx * 0.07);
+            osc.stop(this.ctx.currentTime + idx * 0.07 + 0.35);
+          });
+        }
+      }
+
+      const audio = new SoundSystem();
+
+      // --- Constants & Config ---
+      const ROWS = 6;
+      const COLS = 7;
+      const P1 = 1; // Green
+      const P2 = 2; // Magenta
+      const EMPTY = 0;
+
+      // Board Dimensions
+      const CELL_SIZE = 1.35;
+      const DISC_RADIUS = 0.55;
+      const DISC_THICKNESS = 0.28;
+      const BOARD_WIDTH = COLS * CELL_SIZE + 0.6;
+      const BOARD_HEIGHT = ROWS * CELL_SIZE + 0.6;
+      const BOARD_DEPTH = 0.8;
+
+      // Colors
+      const COLOR_P1 = 0x79FE0C; // Green (#79FE0C)
+      const COLOR_P2 = 0xFF007F; // Magenta (#FF007F)
+      const COLOR_BOARD = 0x0f172a; // Dark slate board
+      const COLOR_FRAME = 0x020617;
+
+      // Game State Variables
+      let board = Array.from({ length: ROWS }, () => Array(COLS).fill(EMPTY));
+      let currentPlayer = P1;
+      let gameActive = true;
+      let isAnimating = false;
+      let activeHoverCol = -1;
+      let gameMode = 'ai-medium'; // 'pvp', 'ai-easy', 'ai-medium', 'ai-hard'
+      let scores = { p1: 0, p2: 0 };
+      let aiTimerId = null; // Track AI timeout for cancellation on reset
+
+      // Animated Discs Array for tick updates
+      let animatedDiscs = [];
+      const placedDiscs = [];
+      const winningRingMeshes = [];
+
+      // UI Elements
+      const p1Badge = document.getElementById('p1-badge');
+      const p2Badge = document.getElementById('p2-badge');
+      const p1ScoreEl = document.getElementById('p1-score');
+      const p2ScoreEl = document.getElementById('p2-score');
+      const p2Label = document.getElementById('p2-label');
+      const modeSelect = document.getElementById('mode-select');
+      const volumeSlider = document.getElementById('volume-slider');
+      const volumeValueText = document.getElementById('volume-value-text');
+      
+      // Drawer UI Elements
+      const hamburgerBtn = document.getElementById('hamburger-btn');
+      const closeDrawerBtn = document.getElementById('close-drawer-btn');
+      const sideDrawer = document.getElementById('side-drawer');
+      const menuBackdrop = document.getElementById('menu-backdrop');
+
+      // --- Scene & Renderer Setup ---
+      const container = document.getElementById('canvas-container');
+      const scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x0a0f1d);
+      scene.fog = new THREE.FogExp2(0x0a0f1d, 0.018);
+
+      const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 100);
+      camera.position.set(0, 4.5, 14.5);
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      container.appendChild(renderer.domElement);
+
+      const controls = new OrbitControls(camera, renderer.domElement);
+      controls.enableDamping = true;
+      controls.dampingFactor = 0.05;
+      controls.maxPolarAngle = Math.PI / 2 + 0.05;
+      controls.minDistance = 8;
+      controls.maxDistance = 22;
+      controls.target.set(0, 3.8, 0);
+
+      // Environmental Studio Map Simulation for Glossy Reflections
+      const pmremGenerator = new THREE.PMREMGenerator(renderer);
+      pmremGenerator.compileEquirectangularShader();
+
+      // Setup Studio Lighting
+      const ambientLight = new THREE.AmbientLight(0xffffff, 1.2);
+      scene.add(ambientLight);
+
+      const mainLight = new THREE.DirectionalLight(0xffffff, 2.5);
+      mainLight.position.set(6, 12, 10);
+      mainLight.castShadow = true;
+      mainLight.shadow.mapSize.width = 2048;
+      mainLight.shadow.mapSize.height = 2048;
+      mainLight.shadow.bias = -0.0001;
+      scene.add(mainLight);
+
+      const fillLight = new THREE.PointLight(0x79FE0C, 1.2, 20);
+      fillLight.position.set(-8, 6, 5);
+      scene.add(fillLight);
+
+      const rimLight = new THREE.PointLight(0xFF007F, 1.5, 25);
+      rimLight.position.set(0, -2, -6);
+      scene.add(rimLight);
+
+      // --- Board Geometry & Mesh Construction ---
+      const boardGroup = new THREE.Group();
+      scene.add(boardGroup);
+
+      function createBoardMesh() {
+        const shape = new THREE.Shape();
+        const halfW = BOARD_WIDTH / 2;
+        const halfH = BOARD_HEIGHT / 2;
+
+        const r = 0.4;
+        shape.moveTo(-halfW + r, -halfH);
+        shape.lineTo(halfW - r, -halfH);
+        shape.quadraticCurveTo(halfW, -halfH, halfW, -halfH + r);
+        shape.lineTo(halfW, halfH - r);
+        shape.quadraticCurveTo(halfW, halfH, halfW - r, halfH);
+        shape.lineTo(-halfW + r, halfH);
+        shape.quadraticCurveTo(-halfW, halfH, -halfW, halfH - r);
+        shape.lineTo(-halfW, -halfH + r);
+        shape.quadraticCurveTo(-halfW, -halfH, -halfW + r, -halfH);
+
+        for (let r = 0; r < ROWS; r++) {
+          for (let c = 0; c < COLS; c++) {
+            const x = (c - (COLS - 1) / 2) * CELL_SIZE;
+            const y = (r - (ROWS - 1) / 2) * CELL_SIZE;
+            const holePath = new THREE.Path();
+            holePath.absarc(x, y, DISC_RADIUS + 0.04, 0, Math.PI * 2, true);
+            shape.holes.push(holePath);
+          }
+        }
+
+        const extrudeSettings = {
+          depth: BOARD_DEPTH,
+          bevelEnabled: true,
+          bevelSegments: 4,
+          steps: 1,
+          bevelSize: 0.08,
+          bevelThickness: 0.08
+        };
+
+        const geometry = new THREE.ExtrudeGeometry(shape, extrudeSettings);
+        geometry.center();
+
+        const material = new THREE.MeshStandardMaterial({
+          color: COLOR_BOARD,
+          roughness: 0.2,
+          metalness: 0.5,
+          envMapIntensity: 1.0
+        });
+
+        const mesh = new THREE.Mesh(geometry, material);
+        mesh.position.y = BOARD_HEIGHT / 2 + 0.3;
+        mesh.castShadow = true;
+        mesh.receiveShadow = true;
+        return mesh;
+      }
+
+      const boardMesh = createBoardMesh();
+      boardGroup.add(boardMesh);
+
+      function createStand() {
+        const standGroup = new THREE.Group();
+        const legGeo = new THREE.BoxGeometry(0.6, 1.2, 3.5);
+        const legMat = new THREE.MeshStandardMaterial({ color: COLOR_FRAME, roughness: 0.6, metalness: 0.2 });
+
+        const leftLeg = new THREE.Mesh(legGeo, legMat);
+        leftLeg.position.set(-BOARD_WIDTH / 2 - 0.2, 0.6, 0);
+        leftLeg.castShadow = true;
+        leftLeg.receiveShadow = true;
+
+        const rightLeg = leftLeg.clone();
+        rightLeg.position.x = BOARD_WIDTH / 2 + 0.2;
+
+        standGroup.add(leftLeg);
+        standGroup.add(rightLeg);
+        return standGroup;
+      }
+      boardGroup.add(createStand());
+
+      // --- Interactive Column Raycast Hitboxes ---
+      const columnHitboxes = [];
+      const hitboxGeo = new THREE.BoxGeometry(CELL_SIZE, BOARD_HEIGHT + 2, BOARD_DEPTH * 2);
+      const hitboxMat = new THREE.MeshBasicMaterial({ visible: false });
+
+      for (let c = 0; c < COLS; c++) {
+        const hitbox = new THREE.Mesh(hitboxGeo, hitboxMat);
+        const x = (c - (COLS - 1) / 2) * CELL_SIZE;
+        hitbox.position.set(x, BOARD_HEIGHT / 2 + 0.8, 0);
+        hitbox.userData = { col: c };
+        columnHitboxes.push(hitbox);
+        boardGroup.add(hitbox);
+      }
+
+      // --- Preview Disc Setup ---
+      const discGeo = new THREE.CylinderGeometry(DISC_RADIUS, DISC_RADIUS, DISC_THICKNESS, 48);
+      discGeo.rotateX(Math.PI / 2);
+
+      const previewMat = new THREE.MeshStandardMaterial({
+        transparent: true,
+        opacity: 0.55,
+        roughness: 0.1,
+        metalness: 0.1
+      });
+      const previewDisc = new THREE.Mesh(discGeo, previewMat);
+      previewDisc.visible = false;
+      boardGroup.add(previewDisc);
+
+      // Glossy Physical Materials for Discs
+      const p1Material = new THREE.MeshPhysicalMaterial({
+        color: COLOR_P1,
+        roughness: 0.1,
+        metalness: 0.15,
+        clearcoat: 1.0,
+        clearcoatRoughness: 0.05,
+        reflectivity: 0.9
+      });
+
+      const p2Material = new THREE.MeshPhysicalMaterial({
+        color: COLOR_P2,
+        roughness: 0.1,
+        metalness: 0.15,
+        clearcoat: 1.0,
+        clearcoatRoughness: 0.05,
+        reflectivity: 0.9
+      });
+
+      // --- Helper Coordinate Mapping ---
+      function getGridPosition(row, col) {
+        const x = (col - (COLS - 1) / 2) * CELL_SIZE;
+        const y = (row - (ROWS - 1) / 2) * CELL_SIZE + (BOARD_HEIGHT / 2 + 0.3);
+        return new THREE.Vector3(x, y, 0);
+      }
+
+      // --- Core Game Logic ---
+      function getDropRow(c) {
+        for (let r = 0; r < ROWS; r++) {
+          if (board[r][c] === EMPTY) return r;
+        }
+        return -1;
+      }
+
+      function updateTurnUI() {
+        if (!gameActive) return;
+
+        if (currentPlayer === P1) {
+          p1Badge.classList.add('badge-glow-p1', 'border-[#79FE0C]/50', 'bg-[#79FE0C]/10');
+          p2Badge.classList.remove('badge-glow-p2', 'border-[#FF007F]/50', 'bg-[#FF007F]/10');
+        } else {
+          p2Badge.classList.add('badge-glow-p2', 'border-[#FF007F]/50', 'bg-[#FF007F]/10');
+          p1Badge.classList.remove('badge-glow-p1', 'border-[#79FE0C]/50', 'bg-[#79FE0C]/10');
+        }
+
+        p1ScoreEl.textContent = scores.p1;
+        p2ScoreEl.textContent = scores.p2;
+      }
+
+      function dropDisc(col, player, isAI = false) {
+        if (!gameActive || isAnimating) return false;
+
+        const row = getDropRow(col);
+        if (row === -1) return false;
+
+        isAnimating = true;
+        board[row][col] = player;
+        previewDisc.visible = false;
+
+        const startPos = getGridPosition(ROWS, col);
+        startPos.y += 0.8;
+        const targetPos = getGridPosition(row, col);
+
+        const mat = player === P1 ? p1Material.clone() : p2Material.clone();
+        const discMesh = new THREE.Mesh(discGeo, mat);
+        discMesh.position.copy(startPos);
+        discMesh.castShadow = true;
+        discMesh.receiveShadow = true;
+        boardGroup.add(discMesh);
+
+        animatedDiscs.push({
+          mesh: discMesh,
+          targetY: targetPos.y,
+          velocity: 0,
+          gravity: -0.028,
+          bounce: 0.32,
+          player: player,
+          onComplete: () => {
+            placedDiscs.push({ mesh: discMesh, row, col, player });
+            audio.playDrop(player);
+
+            const winCells = checkWin(board, row, col, player);
+            if (winCells) {
+              handleWin(player, winCells);
+            } else if (checkDraw(board)) {
+              handleDraw();
+            } else {
+              currentPlayer = currentPlayer === P1 ? P2 : P1;
+              isAnimating = false;
+              updateTurnUI();
+
+              if (gameActive && currentPlayer === P2 && gameMode.startsWith('ai')) {
+                triggerAITurn();
+              }
+            }
+          }
+        });
+
+        return true;
+      }
+
+      // --- Win Detection Logic ---
+      function checkWin(b, lastR, lastC, player) {
+        const directions = [
+          [[0, 1], [0, -1]],
+          [[1, 0], [-1, 0]],
+          [[1, 1], [-1, -1]],
+          [[1, -1], [-1, 1]]
+        ];
+
+        for (const [d1, d2] of directions) {
+          let cells = [[lastR, lastC]];
+
+          for (const [dr, dc] of [d1, d2]) {
+            let r = lastR + dr;
+            let c = lastC + dc;
+            while (r >= 0 && r < ROWS && c >= 0 && c < COLS && b[r][c] === player) {
+              cells.push([r, c]);
+              r += dr;
+              c += dc;
+            }
+          }
+
+          if (cells.length >= 4) {
+            return cells;
+          }
+        }
+        return null;
+      }
+
+      function checkDraw(b) {
+        return b[ROWS - 1].every(cell => cell !== EMPTY);
+      }
+
+      function handleWin(player, winCells) {
+        gameActive = false;
+        isAnimating = false;
+        audio.playWin();
+
+        if (player === P1) {
+          scores.p1++;
+        } else {
+          scores.p2++;
+        }
+        updateTurnUI();
+
+        // Highlight Winning Discs
+        winCells.forEach(([r, c]) => {
+          const pos = getGridPosition(r, c);
+          const ringGeo = new THREE.TorusGeometry(DISC_RADIUS + 0.08, 0.05, 16, 32);
+          const ringMat = new THREE.MeshBasicMaterial({ color: player === P1 ? COLOR_P1 : COLOR_P2 });
+          const ring = new THREE.Mesh(ringGeo, ringMat);
+          ring.position.copy(pos);
+          ring.position.z += 0.15;
+          boardGroup.add(ring);
+          winningRingMeshes.push(ring);
+        });
+      }
+
+      function handleDraw() {
+        gameActive = false;
+        isAnimating = false;
+      }
+
+      // --- AI Logic ---
+      function triggerAITurn() {
+        isAnimating = true;
+
+        aiTimerId = setTimeout(() => {
+          aiTimerId = null;
+          if (!gameActive) return;
+
+          isAnimating = false;
+          let bestCol = 0;
+
+          if (gameMode === 'ai-easy') {
+            bestCol = getRandomMove();
+          } else if (gameMode === 'ai-medium') {
+            bestCol = Math.random() < 0.3 ? getRandomMove() : getSmartMove();
+          } else {
+            bestCol = getMinimaxMove(4);
+          }
+
+          dropDisc(bestCol, P2, true);
+        }, 450);
+      }
+
+      function getRandomMove() {
+        const validCols = [];
+        for (let c = 0; c < COLS; c++) {
+          if (board[ROWS - 1][c] === EMPTY) validCols.push(c);
+        }
+        return validCols[Math.floor(Math.random() * validCols.length)];
+      }
+
+      function getSmartMove() {
+        for (let c = 0; c < COLS; c++) {
+          const r = getDropRow(c);
+          if (r !== -1) {
+            board[r][c] = P2;
+            if (checkWin(board, r, c, P2)) {
+              board[r][c] = EMPTY;
+              return c;
+            }
+            board[r][c] = EMPTY;
+          }
+        }
+        for (let c = 0; c < COLS; c++) {
+          const r = getDropRow(c);
+          if (r !== -1) {
+            board[r][c] = P1;
+            if (checkWin(board, r, c, P1)) {
+              board[r][c] = EMPTY;
+              return c;
+            }
+            board[r][c] = EMPTY;
+          }
+        }
+        const centerOrder = [3, 2, 4, 1, 5, 0, 6];
+        for (const c of centerOrder) {
+          if (getDropRow(c) !== -1) return c;
+        }
+        return getRandomMove();
+      }
+
+      function getMinimaxMove(depth) {
+        let bestScore = -Infinity;
+        let bestCol = 3;
+        const validCols = [3, 2, 4, 1, 5, 0, 6].filter(c => board[ROWS - 1][c] === EMPTY);
+
+        for (const c of validCols) {
+          const r = getDropRow(c);
+          board[r][c] = P2;
+          if (checkWin(board, r, c, P2)) {
+            board[r][c] = EMPTY;
+            return c;
+          }
+          const score = minimax(board, depth - 1, -Infinity, Infinity, false);
+          board[r][c] = EMPTY;
+
+          if (score > bestScore) {
+            bestScore = score;
+            bestCol = c;
+          }
+        }
+        return bestCol;
+      }
+
+      function evaluateWindow(w) {
+        let score = 0;
+        const p2Count = w.filter(c => c === P2).length;
+        const p1Count = w.filter(c => c === P1).length;
+        const emptyCount = w.filter(c => c === EMPTY).length;
+
+        if (p2Count === 4) score += 1000;
+        else if (p2Count === 3 && emptyCount === 1) score += 12;
+        else if (p2Count === 2 && emptyCount === 2) score += 3;
+
+        if (p1Count === 3 && emptyCount === 1) score -= 80;
+
+        return score;
+      }
+
+      function evaluateBoard(b) {
+        let score = 0;
+        for (let r = 0; r < ROWS; r++) {
+          if (b[r][3] === P2) score += 6;
+        }
+        for (let r = 0; r < ROWS; r++) {
+          for (let c = 0; c <= COLS - 4; c++) {
+            score += evaluateWindow([b[r][c], b[r][c+1], b[r][c+2], b[r][c+3]]);
+          }
+        }
+        for (let c = 0; c < COLS; c++) {
+          for (let r = 0; r <= ROWS - 4; r++) {
+            score += evaluateWindow([b[r][c], b[r+1][c], b[r+2][c], b[r+3][c]]);
+          }
+        }
+        return score;
+      }
+
+      function minimax(b, depth, alpha, beta, isMax) {
+        if (depth === 0) return evaluateBoard(b);
+
+        const validCols = [3, 2, 4, 1, 5, 0, 6].filter(c => b[ROWS - 1][c] === EMPTY);
+        if (validCols.length === 0) return 0;
+
+        if (isMax) {
+          let maxEval = -Infinity;
+          for (const c of validCols) {
+            const r = getDropRow(c);
+            b[r][c] = P2;
+            if (checkWin(b, r, c, P2)) {
+              b[r][c] = EMPTY;
+              return 10000 + depth;
+            }
+            const evalScore = minimax(b, depth - 1, alpha, beta, false);
+            b[r][c] = EMPTY;
+            maxEval = Math.max(maxEval, evalScore);
+            alpha = Math.max(alpha, evalScore);
+            if (beta <= alpha) break;
+          }
+          return maxEval;
+        } else {
+          let minEval = Infinity;
+          for (const c of validCols) {
+            const r = getDropRow(c);
+            b[r][c] = P1;
+            if (checkWin(b, r, c, P1)) {
+              b[r][c] = EMPTY;
+              return -10000 - depth;
+            }
+            const evalScore = minimax(b, depth - 1, alpha, beta, true);
+            b[r][c] = EMPTY;
+            minEval = Math.min(minEval, evalScore);
+            beta = Math.min(beta, evalScore);
+            if (beta <= alpha) break;
+          }
+          return minEval;
+        }
+      }
+
+      // --- Pointer / Hover Interaction ---
+      const raycaster = new THREE.Raycaster();
+      const pointer = new THREE.Vector2();
+
+      function updatePointer(event) {
+        const rect = renderer.domElement.getBoundingClientRect();
+        pointer.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+        pointer.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+      }
+
+      function handleHover(event) {
+        if (!gameActive || isAnimating || (currentPlayer === P2 && gameMode.startsWith('ai'))) {
+          previewDisc.visible = false;
+          activeHoverCol = -1;
+          return;
+        }
+
+        updatePointer(event);
+        raycaster.setFromCamera(pointer, camera);
+        const intersects = raycaster.intersectObjects(columnHitboxes);
+
+        if (intersects.length > 0) {
+          const col = intersects[0].object.userData.col;
+          const dropRow = getDropRow(col);
+
+          if (dropRow !== -1) {
+            if (col !== activeHoverCol) {
+              activeHoverCol = col;
+              audio.playHover();
+            }
+            const hoverPos = getGridPosition(ROWS, col);
+            previewDisc.position.copy(hoverPos);
+            previewDisc.material.color.setHex(currentPlayer === P1 ? COLOR_P1 : COLOR_P2);
+            previewDisc.visible = true;
+            document.body.style.cursor = 'pointer';
+            return;
+          }
+        }
+
+        previewDisc.visible = false;
+        activeHoverCol = -1;
+        document.body.style.cursor = 'default';
+      }
+
+      function handleClick(event) {
+        audio.init();
+        if (!gameActive || isAnimating || (currentPlayer === P2 && gameMode.startsWith('ai'))) return;
+
+        updatePointer(event);
+        raycaster.setFromCamera(pointer, camera);
+        const intersects = raycaster.intersectObjects(columnHitboxes);
+
+        if (intersects.length > 0) {
+          const col = intersects[0].object.userData.col;
+          dropDisc(col, currentPlayer);
+        }
+      }
+
+      // --- Drawer Open / Close Functions ---
+      function openDrawer() {
+        sideDrawer.classList.remove('-translate-x-full');
+        menuBackdrop.classList.remove('opacity-0', 'pointer-events-none');
+      }
+
+      function closeDrawer() {
+        sideDrawer.classList.add('-translate-x-full');
+        menuBackdrop.classList.add('opacity-0', 'pointer-events-none');
+      }
+
+      // --- Event Listeners ---
+      window.addEventListener('pointermove', handleHover);
+      window.addEventListener('click', handleClick);
+
+      hamburgerBtn.addEventListener('click', openDrawer);
+      closeDrawerBtn.addEventListener('click', closeDrawer);
+      menuBackdrop.addEventListener('click', closeDrawer);
+
+      document.getElementById('reset-btn').addEventListener('click', () => {
+        resetGame();
+        closeDrawer();
+      });
+
+      modeSelect.addEventListener('change', (e) => {
+        gameMode = e.target.value;
+        p2Label.textContent = gameMode === 'pvp' ? 'P2' : 'AI';
+        scores = { p1: 0, p2: 0 };
+        resetGame();
+      });
+
+      volumeSlider.addEventListener('input', (e) => {
+        const val = parseFloat(e.target.value);
+        audio.volume = val;
+        volumeValueText.textContent = `${Math.round(val * 100)}%`;
+      });
+
+      window.addEventListener('resize', () => {
+        camera.aspect = window.innerWidth / window.innerHeight;
+        camera.updateProjectionMatrix();
+        renderer.setSize(window.innerWidth, window.innerHeight);
+      });
+
+      // --- Comprehensive Reset Function (Fixes Multi-Piece Drop Bug) ---
+      function resetGame() {
+        // Clear AI Pending Timeout
+        if (aiTimerId !== null) {
+          clearTimeout(aiTimerId);
+          aiTimerId = null;
+        }
+
+        // Immediately purge all mid-fall animating discs
+        animatedDiscs.forEach(item => boardGroup.remove(item.mesh));
+        animatedDiscs = [];
+
+        // Clear placed disc meshes
+        placedDiscs.forEach(item => boardGroup.remove(item.mesh));
+        placedDiscs.length = 0;
+
+        // Clear winning highlight rings
+        winningRingMeshes.forEach(ring => boardGroup.remove(ring));
+        winningRingMeshes.length = 0;
+
+        // Reset board memory grid
+        board = Array.from({ length: ROWS }, () => Array(COLS).fill(EMPTY));
+        currentPlayer = P1;
+        gameActive = true;
+        isAnimating = false;
+
+        previewDisc.visible = false;
+        updateTurnUI();
+      }
+
+      // --- Animation Loop ---
+      let clock = new THREE.Clock();
+
+      function animate() {
+        requestAnimationFrame(animate);
+        const delta = clock.getDelta();
+
+        // Update disc fall animations
+        for (let i = animatedDiscs.length - 1; i >= 0; i--) {
+          const item = animatedDiscs[i];
+          item.velocity += item.gravity;
+          item.mesh.position.y += item.velocity;
+
+          if (item.mesh.position.y <= item.targetY) {
+            item.mesh.position.y = item.targetY;
+
+            if (Math.abs(item.velocity) > 0.08) {
+              item.velocity = -item.velocity * item.bounce;
+            } else {
+              item.onComplete();
+              animatedDiscs.splice(i, 1);
+            }
+          }
+        }
+
+        // Pulse winning highlight rings
+        winningRingMeshes.forEach(ring => {
+          ring.rotation.z += delta * 2;
+          const s = 1 + Math.sin(clock.getElapsedTime() * 6) * 0.08;
+          ring.scale.set(s, s, s);
+        });
+
+        controls.update();
+        renderer.render(scene, camera);
+      }
+
+      // Initialize Game
+      resetGame();
+      animate();
+    </script>
+  </body>
+</html>
